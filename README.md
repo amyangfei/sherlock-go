@@ -10,8 +10,10 @@ It is inspired by [vaidik/sherlock](https://github.com/vaidik/sherlock)
 
 l := NewEtcdLock("TestEtcdLock", nil)
 l.SetNamespace("lock")
-if _, err := l.Acquire(false); err != nil {
+if validity, err := l.Acquire(false); err != nil {
     // error handling
+} else {
+    // you can do anything with the resource in the duration of validity
 }
 if l.Locked() != true {
     // error handling

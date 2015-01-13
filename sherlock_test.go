@@ -18,9 +18,9 @@ func TestEtcdLock(t *testing.T) {
 		t.Errorf("locked should return false")
 	}
 
-	if b, err := l.Acquire(false); err != nil {
+	if validity, err := l.Acquire(false); err != nil {
 		t.Errorf("failed to acquire lock error(%v)", err)
-	} else if b != true {
+	} else if validity <= 0 {
 		t.Errorf("failed to acquire lock")
 	}
 	if l.Locked() != true {

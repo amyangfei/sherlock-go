@@ -19,13 +19,16 @@ type BaseLock struct {
 	namespace string
 
 	// Lock expiration time. If explicitly set to -1, lock will not expire
-	expire int
+	expire float64
 
-	// Timeout to acquire lock
+	// Timeout to acquire lock, in seconds
 	timeout float64
 
 	// Retry interval to retry acquiring a lock if previous attempts failed
 	retryInterval float64
+
+	// just a few milliseconds in order to compensate for clock drift between processes
+	driftFactor float64
 
 	// lock value for key
 	owner string
@@ -33,9 +36,10 @@ type BaseLock struct {
 
 var DefaultOptions = map[string]interface{}{
 	"namespace":     "LockDefault",
-	"expire":        60,
+	"expire":        60.0,
 	"timeout":       10.0,
 	"retryInterval": 0.1,
+	"driftFactor":   0.001,
 	"owner":         "dfltowner",
 }
 
@@ -44,7 +48,7 @@ func NewBaseLock(lockName string) *BaseLock {
 		lockName: lockName,
 	}
 	l.namespace = DefaultOptions["namespace"].(string)
-	l.expire = DefaultOptions["expire"].(int)
+	l.expire = DefaultOptions["expire"].(float64)
 	l.timeout = DefaultOptions["timeout"].(float64)
 	l.retryInterval = DefaultOptions["retryInterval"].(float64)
 	l.owner = DefaultOptions["owner"].(string)
@@ -56,7 +60,7 @@ func (l *BaseLock) SetNamespace(namespace string) {
 	l.namespace = namespace
 }
 
-func (l *BaseLock) SetExpire(expire int) {
+func (l *BaseLock) SetExpire(expire float64) {
 	l.expire = expire
 }
 
@@ -68,7 +72,11 @@ func (l *BaseLock) SetRetryInterval(retryInterval float64) {
 	l.retryInterval = retryInterval
 }
 
-func (l *BaseLock) SetDfltOwner(owner string) {
+func (l *BaseLock) SetDriftFactor(driftFactor float64) {
+	l.driftFactor = driftFactor
+}
+
+func (l *BaseLock) SetOwner(owner string) {
 	l.owner = owner
 }
 
@@ -106,28 +114,36 @@ func (l *EtcdLock) acquire() (bool, error) {
 		}
 		return true, nil
 	} else {
-		return false, nil
+		return false, fmt.Errorf("lock has been acquired by other node")
 	}
 }
 
-func (l *EtcdLock) Acquire(blocking bool) (bool, error) {
+func (l *EtcdLock) Acquire(blocking bool) (float64, error) {
+	start := time.Now().UnixNano()
 	if blocking {
 		timeout := l.timeout
-		for timeout >= 0 {
+		for timeout > 0 {
 			if ok, _ := l.acquire(); !ok {
 				timeout -= l.retryInterval
 				if timeout > 0 {
 					time.Sleep(time.Second * time.Duration(l.retryInterval))
 				}
 			} else {
-				return true, nil
+				break
 			}
 		}
-		return false, fmt.Errorf("Timeout elapsed after %s seconds while "+
-			"trying to acquiring lock.", l.timeout)
+		if timeout <= 0 {
+			return -1, fmt.Errorf("Timeout elapsed after %.3f seconds while trying to acquiring lock.", l.timeout)
+		}
 	} else {
-		return l.acquire()
+		if ok, err := l.acquire(); !ok {
+			return -1, err
+		}
 	}
+	cost := float64(time.Now().UnixNano()-start) / 1e9
+	drift := float64(l.expire) * l.driftFactor
+	validity := l.expire - cost - drift
+	return validity, nil
 }
 
 func (l *EtcdLock) Release() error {
