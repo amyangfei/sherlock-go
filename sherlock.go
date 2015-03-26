@@ -109,14 +109,10 @@ func (l *EtcdLock) Locked() bool {
 }
 
 func (l *EtcdLock) acquire() (bool, error) {
-	if _, err := l.client.Get(l.keyName(), false, false); err != nil {
-		if _, err := l.client.Set(l.keyName(), l.owner, uint64(l.expire/1000)); err != nil {
-			return false, err
-		}
-		return true, nil
-	} else {
-		return false, fmt.Errorf("lock has been acquired by other node")
+	if _, err := l.client.Create(l.keyName(), l.owner, uint64(l.expire/1000)); err != nil {
+		return false, err
 	}
+	return true, nil
 }
 
 func (l *EtcdLock) Acquire(blocking bool) (int64, error) {
