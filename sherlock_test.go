@@ -46,13 +46,17 @@ func writer(count int, back chan int) {
 			f, err := os.OpenFile(fpath, os.O_RDWR|os.O_CREATE, os.ModePerm)
 			if err != nil {
 				panic(err)
+				f.Close()
 			}
-			defer f.Close()
 			buf := make([]byte, 1024)
 			n, _ := f.Read(buf)
 			num, _ := strconv.ParseInt(strings.TrimRight(string(buf[:n]), "\n"), 10, 64)
 			f.WriteAt([]byte(strconv.Itoa(int(num+1))), 0)
 			incr += 1
+
+			f.Sync()
+			f.Close()
+
 			l.Release()
 		}
 	}
